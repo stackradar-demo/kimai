@@ -1,0 +1,27 @@
+version: 1
+
+automerge:
+  minimum_score: 80
+  soak_seconds: 0
+
+changes:
+  test_edits: score
+
+ci:
+  workflow: stackradar-demo-ci.yml
+  required_check: StackRadar Demo CI
+
+verification:
+  environment:
+    APP_ENV: test
+    APP_DEBUG: '0'
+    DATABASE_URL: mysql://root:kimai@127.0.0.1:3306/kimai?charset=utf8mb4&serverVersion=8.0.35
+    MAILER_URL: null://localhost
+  setup:
+    - [sudo, systemctl, start, mysql.service]
+  commands:
+    - [composer, validate, --strict, --no-check-all, --no-interaction]
+    - [composer, tests]
+    - [composer, phpstan]
+    - [composer, linting]
+    - [composer, audit, --abandoned=report]
