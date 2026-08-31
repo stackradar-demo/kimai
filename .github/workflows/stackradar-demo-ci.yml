@@ -57,11 +57,23 @@ jobs:
       - name: Run the full test suite
         run: composer tests
 
+      - name: Warm the development container
+        run: bin/console cache:warmup
+        env:
+          APP_ENV: dev
+          APP_DEBUG: '1'
+
       - name: Run static analysis
         run: composer phpstan
+        env:
+          APP_ENV: dev
+          APP_DEBUG: '1'
 
       - name: Run project linting
         run: composer linting
+        env:
+          APP_ENV: dev
+          APP_DEBUG: '1'
 
       - name: Audit locked dependencies
         run: composer audit --abandoned=report

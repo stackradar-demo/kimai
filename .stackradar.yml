@@ -22,6 +22,7 @@ verification:
   commands:
     - [composer, validate, --strict, --no-check-all, --no-interaction]
     - [composer, tests]
-    - [composer, phpstan]
-    - [composer, linting]
+    - [env, APP_ENV=dev, APP_DEBUG=1, php, bin/console, cache:warmup]
+    - [env, APP_ENV=dev, APP_DEBUG=1, composer, phpstan]
+    - [env, APP_ENV=dev, APP_DEBUG=1, composer, linting]
     - [composer, audit, --abandoned=report]
