@@ -8,10 +8,12 @@ includes:
     - %rootDir%/../phpstan-deprecation-rules/rules.neon
 
 parameters:
+    phpVersion: 80233
     level: 9
     paths:
         - .
     tmpDir: %rootDir%/../../../var/cache/phpstan
+    resultCachePath: %tmpDir%/phpstan-tests.php
     excludePaths:
         - %rootDir%/../../../tests/Ldap/LdapDriverTest.php
     inferPrivatePropertyTypeFromConstructor: true
@@ -26,6 +28,7 @@ parameters:
         - message: '#^Call to deprecated method setApiToken\(\) of class App\\Entity\\User#'
         - message: '#^Call to deprecated method getPlainApiToken\(\) of class App\\Entity\\User#'
         - message: '#^Call to deprecated method setPlainApiToken\(\) of class App\\Entity\\User#'
+        - message: '#^Call to deprecated method enableSandbox\(\) of class Twig\\Extension\\SandboxExtension#'
 
         -
             identifier: classConstant.deprecatedClass
@@ -135,11 +138,6 @@ parameters:
         -
             message: "#^Parameter \\#1 \\$json of function json_decode expects string, string\\|false given\\.$#"
             count: 3
-            path: API/APIControllerBaseTestCase.php
-
-        -
-            message: "#^Parameter \\#2 \\$array of static method PHPUnit\\\\Framework\\\\Assert\\:\\:assertArrayHasKey\\(\\) expects array\\|ArrayAccess, mixed given\\.$#"
-            count: 1
             path: API/APIControllerBaseTestCase.php
 
         -
@@ -268,7 +266,7 @@ parameters:
             path: API/TagControllerTest.php
         -
             message: "#^Parameter \\#1 \\$json of function json_decode expects string, string\\|false given\\.$#"
-            count: 38
+            count: 40
             path: API/TeamControllerTest.php
 
         -
@@ -1047,11 +1045,6 @@ parameters:
             path: Entity/ProjectTest.php
 
         -
-            message: "#^Cannot call method getUser\\(\\) on mixed\\.$#"
-            count: 1
-            path: Entity/TeamTest.php
-
-        -
             message: "#^Cannot call method getValue\\(\\) on App\\\\Entity\\\\MetaTableTypeInterface\\|null\\.$#"
             count: 1
             path: Entity/TimesheetTest.php
@@ -1695,16 +1688,6 @@ parameters:
             message: "#^Parameter \\#1 \\$invoiceItems of method App\\\\Repository\\\\TimesheetInvoiceItemRepository\\:\\:setExported\\(\\) expects array\\<App\\\\Entity\\\\ExportableItem\\>, array\\<int, App\\\\Entity\\\\Activity\\|App\\\\Entity\\\\Timesheet\\|stdClass\\|null\\> given\\.$#"
             count: 1
             path: Repository/TimesheetInvoiceItemRepositoryTest.php
-
-        -
-            message: "#^Cannot call method getId\\(\\) on mixed\\.$#"
-            count: 2
-            path: Repository/TimesheetRepositoryTest.php
-
-        -
-            message: "#^Cannot call method getName\\(\\) on mixed\\.$#"
-            count: 2
-            path: Repository/TimesheetRepositoryTest.php
 
         -
             message: "#^Method App\\\\Tests\\\\Saml\\\\SamlProviderTest\\:\\:getSamlProvider\\(\\) has parameter \\$mapping with no value type specified in iterable type array\\.$#"

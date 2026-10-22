@@ -580,6 +580,15 @@ final class Configuration implements ConfigurationInterface
                 ->integerNode('password_reset_token_ttl')
                     ->defaultValue(86400)
                 ->end()
+                ->integerNode('password_strength')
+                    ->info('Minimum password strength: 0 = disabled, 1 = weak, 2 = medium, 3 = strong, 4 = very strong')
+                    ->defaultValue(0)
+                    ->min(0)
+                    ->max(4)
+                ->end()
+                ->booleanNode('auth_change')
+                    ->defaultFalse()
+                ->end()
             ->end()
         ;
 
@@ -642,6 +651,7 @@ final class Configuration implements ConfigurationInterface
                     ->children()
                         ->scalarNode('timezone')->defaultNull()->end()
                         ->scalarNode('language')->defaultValue(User::DEFAULT_LANGUAGE)->end()
+                        ->scalarNode('locale')->defaultNull()->end()
                         ->scalarNode('theme')
                             ->defaultValue('auto')
                             ->validate()
