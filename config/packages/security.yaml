@@ -43,11 +43,11 @@ security:
 
             remember_me:
                 name: KIMAI_REMEMBER
-                secret: '%kernel.secret%'
+                secret: '%kernel.secret%_remember_me'
                 lifetime: 604800
                 path: /
                 always_remember_me: true
-                signature_properties: ['email', 'password', 'signatureDate']
+                signature_properties: ['id', 'email', 'password', 'signatureDate']
 
             # activate all configured user provider
             provider: chain_provider
@@ -76,6 +76,8 @@ security:
                 lifetime: 900
                 login_path: login
                 max_uses: 3
+                # requires a password change for links which were requested as password reset
+                success_handler: App\Security\LoginLinkSuccessHandler
                 # 'password' binds the HMAC signature to the password hash, so a
                 # link becomes invalid as soon as the user changes the password
                 signature_properties: ['email', 'password', 'signatureDate']

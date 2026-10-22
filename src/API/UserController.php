@@ -182,7 +182,7 @@ final class UserController extends BaseApiController
             'include_active_flag' => ($profile->getId() !== $this->getUser()->getId()),
             'include_preferences' => $this->isGranted('preferences', $profile),
             'include_supervisor' => $this->isGranted('supervisor', $profile),
-            'include_password_reset' => $this->isGranted('password', $profile),
+            'include_password_reset' => $this->isGranted('roles', $profile),
         ]);
 
         $form->setData($profile);
@@ -284,6 +284,13 @@ final class UserController extends BaseApiController
 
             if (null === ($meta = $profile->getPreference($name))) {
                 throw $this->createNotFoundException(\sprintf('Unknown custom-field "%s" requested', $name));
+            }
+
+            // the name is normalized and dots (.) are replaced with underscores (_)
+            // a string like ..pw_reset.. is normalized to __pw_reset__
+
+            if (str_starts_with($meta->getName(), '__')) {
+                throw $this->createAccessDeniedException('Cannot modify internal preference: ' . $name);
             }
 
             if (!$meta->isEnabled()) {

@@ -51,6 +51,12 @@ use Symfony\Component\Validator\Constraints as Assert;
 #[Constraints\User(groups: ['UserCreate', 'Registration', 'Default', 'Profile'])]
 class User implements UserInterface, EquatableInterface, ThemeUserInterface, PasswordAuthenticatedUserInterface, TwoFactorInterface
 {
+    public const PREFERENCE_PASSWORD_RESET = '__pw_reset__';
+    /**
+     * Hash of the login link that was created as password reset, see LoginLinkSuccessHandler
+     */
+    public const PREFERENCE_PASSWORD_RESET_LINK = '__pw_reset_link__';
+
     public const ROLE_USER = 'ROLE_USER';
     public const ROLE_TEAMLEAD = 'ROLE_TEAMLEAD';
     public const ROLE_ADMIN = 'ROLE_ADMIN';
@@ -107,7 +113,7 @@ class User implements UserInterface, EquatableInterface, ThemeUserInterface, Pas
      */
     #[ORM\Column(name: 'avatar', type: Types::STRING, length: 255, nullable: true)]
     #[Assert\Url]
-    #[Assert\Length(max: 255, groups: ['Profile'])]
+    #[Assert\Length(max: 255)]
     #[Serializer\Expose]
     #[Serializer\Groups(['Default'])]
     private ?string $avatar = null;
@@ -133,14 +139,14 @@ class User implements UserInterface, EquatableInterface, ThemeUserInterface, Pas
      * if a currently logged-in user will be deleted and then refreshed from the session from one of the UserProvider
      * e.g. see LdapUserProvider::refreshUser() it might crash if $user->getPreferenceValue() is called
      *
-     * @var Collection<UserPreference>|null
+     * @var Collection<int, UserPreference>|null
      */
     #[ORM\OneToMany(mappedBy: 'user', targetEntity: UserPreference::class, cascade: ['persist'])]
     private ?Collection $preferences = null;
     /**
      * List of all team memberships.
      *
-     * @var Collection<TeamMember>
+     * @var Collection<int, TeamMember>
      */
     #[ORM\OneToMany(mappedBy: 'user', targetEntity: TeamMember::class, cascade: ['persist'], fetch: 'LAZY', orphanRemoval: true)]
     #[ORM\JoinColumn(nullable: false, onDelete: 'CASCADE')]
@@ -199,6 +205,7 @@ class User implements UserInterface, EquatableInterface, ThemeUserInterface, Pas
      */
     #[Assert\NotBlank(groups: ['Registration', 'PasswordUpdate', 'UserCreate'])]
     #[Assert\Length(min: 8, max: 60, groups: ['Registration', 'PasswordUpdate', 'UserCreate', 'ResetPassword', 'ChangePassword'])]
+    #[Constraints\PasswordPolicy(groups: ['Registration', 'PasswordUpdate', 'UserCreate', 'ResetPassword', 'ChangePassword'])]
     private ?string $plainPassword = null;
     #[ORM\Column(name: 'last_login', type: Types::DATETIME_MUTABLE, nullable: true)]
     private ?DateTime $lastLogin = null;
@@ -390,7 +397,7 @@ class User implements UserInterface, EquatableInterface, ThemeUserInterface, Pas
     }
 
     /**
-     * @return Collection<UserPreference>
+     * @return Collection<int, UserPreference>
      */
     public function getPreferences(): Collection
     {
@@ -614,7 +621,7 @@ class User implements UserInterface, EquatableInterface, ThemeUserInterface, Pas
     }
 
     /**
-     * @return Collection<TeamMember>
+     * @return Collection<int, TeamMember>
      */
     public function getMemberships(): Collection
     {
@@ -715,10 +722,15 @@ class User implements UserInterface, EquatableInterface, ThemeUserInterface, Pas
      * This will reset all security signatures and therefor invalidate:
      * - login links
      * - remember me cookies
+     * - sessions
+     *
+     * @see \App\Doctrine\UserSecuritySignatureSubscriber
      */
     public function resetSecuritySignature(): void
     {
-        $this->signatureDate = new \DateTimeImmutable('now', $this->getDateTimezone());
+        // UTC without microseconds: same value before and after persisting, which is required for a stable signature
+        $timestamp = max(time(), ($this->signatureDate?->getTimestamp() ?? 0) + 1);
+        $this->signatureDate = new \DateTimeImmutable('@' . $timestamp);
     }
 
     /**
@@ -897,6 +909,21 @@ class User implements UserInterface, EquatableInterface, ThemeUserInterface, Pas
         return $this->auth === null || $this->auth === self::AUTH_INTERNAL;
     }
 
+    /**
+     * Switches an LDAP or SAML account back to the internal authentication.
+     * Values of the previous authentication are removed and the password is cleared.
+     */
+    public function switchToInternalAuth(): void
+    {
+        if ($this->isInternalUser()) {
+            return;
+        }
+
+        $this->auth = self::AUTH_INTERNAL;
+        $this->password = '';
+        $this->getPreference('ldap_dn')?->setValue(null);
+    }
+
     public function addRole(string $role): void
     {
         $role = strtoupper($role);
@@ -1046,14 +1073,14 @@ class User implements UserInterface, EquatableInterface, ThemeUserInterface, Pas
         return $this;
     }
 
-    public function setPassword($password): User
+    public function setPassword(#[\SensitiveParameter] $password): User
     {
         $this->password = $password;
 
         return $this;
     }
 
-    public function setPlainPassword($password): User
+    public function setPlainPassword(#[\SensitiveParameter] $password): User
     {
         $this->plainPassword = $password;
 
@@ -1071,7 +1098,7 @@ class User implements UserInterface, EquatableInterface, ThemeUserInterface, Pas
         return $this;
     }
 
-    public function setConfirmationToken($confirmationToken): void
+    public function setConfirmationToken(#[\SensitiveParameter] $confirmationToken): void
     {
         $this->confirmationToken = $confirmationToken;
     }
@@ -1125,6 +1152,11 @@ class User implements UserInterface, EquatableInterface, ThemeUserInterface, Pas
             return false;
         }
 
+        // a reset security signature (e.g. after changing the email) invalidates all existing sessions
+        if ($this->getSignatureDate() !== $user->getSignatureDate()) {
+            return false;
+        }
+
         return true;
     }
 
@@ -1136,6 +1168,7 @@ class User implements UserInterface, EquatableInterface, ThemeUserInterface, Pas
             'enabled' => $this->enabled,
             'email' => $this->email,
             'password' => $this->password,
+            'signatureDate' => $this->signatureDate,
         ];
     }
 
@@ -1149,6 +1182,7 @@ class User implements UserInterface, EquatableInterface, ThemeUserInterface, Pas
         $this->enabled = $data['enabled'];
         $this->email = $data['email'];
         $this->password = $data['password'];
+        $this->signatureDate = $data['signatureDate'] ?? null;
     }
 
     public function __toString(): string
@@ -1226,16 +1260,56 @@ class User implements UserInterface, EquatableInterface, ThemeUserInterface, Pas
             return false;
         }
 
-        return $this->getPreferenceValue('__pw_reset__') === '1';
+        return $this->getPreferenceValue(self::PREFERENCE_PASSWORD_RESET) === '1';
     }
 
     public function setRequiresPasswordReset(bool $require = true): void
     {
-        $this->setPreferenceValue('__pw_reset__', ($require ? '1' : '0'));
+        $this->setPreferenceValue(self::PREFERENCE_PASSWORD_RESET, ($require ? '1' : '0'));
+
+        // the reset link is used up: it was consumed, an admin required the reset or the password was changed
+        if (null !== ($link = $this->getPreference(self::PREFERENCE_PASSWORD_RESET_LINK))) {
+            $link->setValue(null);
+        }
 
         if (!$require) {
             $this->passwordRequestedAt = null;
         }
+    }
+
+    /**
+     * Binds the password reset to one specific login link: only this link requires a password change when used.
+     * The hash is not stored in plain text, as it would allow to recreate the login link.
+     */
+    public function markPasswordResetLink(string $loginLink): void
+    {
+        $this->setPreferenceValue(self::PREFERENCE_PASSWORD_RESET_LINK, hash('sha256', $this->getLoginLinkHash($loginLink)));
+    }
+
+    /**
+     * The hash identifies the login link, it is validated by the LoginLinkHandler when the link is used.
+     */
+    private function getLoginLinkHash(string $loginLink): string
+    {
+        parse_str((string) parse_url($loginLink, PHP_URL_QUERY), $query);
+        $hash = $query['hash'] ?? null;
+
+        if (!\is_string($hash) || $hash === '') {
+            throw new \RuntimeException('Login link without hash');
+        }
+
+        return $hash;
+    }
+
+    public function isPasswordResetLink(string $loginLinkHash): bool
+    {
+        $stored = $this->getPreferenceValue(self::PREFERENCE_PASSWORD_RESET_LINK);
+
+        if (!\is_string($stored) || $stored === '') {
+            return false;
+        }
+
+        return hash_equals($stored, hash('sha256', $loginLinkHash));
     }
 
     public function hasSeenWizard(string $wizard): bool
@@ -1270,7 +1344,7 @@ class User implements UserInterface, EquatableInterface, ThemeUserInterface, Pas
 
     // --------------- 2 Factor Authentication ---------------
 
-    public function setTotpSecret(?string $secret): void
+    public function setTotpSecret(#[\SensitiveParameter] ?string $secret): void
     {
         $this->totpSecret = $secret;
     }
@@ -1298,6 +1372,7 @@ class User implements UserInterface, EquatableInterface, ThemeUserInterface, Pas
     public function disableTotpAuthentication(): void
     {
         $this->totpEnabled = false;
+        $this->totpSecret = null;
     }
 
     public function getTotpAuthenticationUsername(): string
@@ -1307,7 +1382,16 @@ class User implements UserInterface, EquatableInterface, ThemeUserInterface, Pas
 
     public function getTotpAuthenticationConfiguration(): TotpConfigurationInterface
     {
-        return new TotpConfiguration($this->totpSecret, TotpConfiguration::ALGORITHM_SHA1, 30, 6);
+        if ($this->totpSecret === null) {
+            throw new \LogicException('Cannot create TOTP configuration, user has no TOTP secret');
+        }
+
+        return $this->createTotpAuthenticationConfiguration($this->totpSecret);
+    }
+
+    public function createTotpAuthenticationConfiguration(#[\SensitiveParameter] string $secret): TotpConfigurationInterface
+    {
+        return new TotpConfiguration($secret, TotpConfiguration::ALGORITHM_SHA1, 30, 6);
     }
 
     /**
